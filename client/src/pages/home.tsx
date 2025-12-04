@@ -24,6 +24,7 @@ function mapClientStatus(raw: string): string {
   if (!raw) return "";
 
   const table: Record<string, string> = {
+    // These keys must match what your workflow sends
     "In Progress": "In Progress",
     "Preparation in Progress": "In Progress",
     "Preparation Completed": "Ready for Review",
@@ -36,9 +37,10 @@ function mapClientStatus(raw: string): string {
     "Extension Accepted": "Extension Accepted",
     "Tax Return Complete": "Complete",
     "Review SharePoint Folder": "Review SP",
-    "Documents Received": "Documents Received"
+    "Documents Received": "Documents Received",
   };
 
+  // If no mapping, show the raw text so you can see what’s coming through
   return table[raw] ?? raw;
 }
 
@@ -54,13 +56,30 @@ function parseRows(rawString: string): DisplayRow[] {
   }
 
   return rows
-    .map((r: any) => ({
-      clientName: r.client_name || "",
-      taxYear: String(r.tax_year),
-      taxReturnType: r.tax_return_type || r.type || "",
-      status: mapClientStatus(r.status_label || r.status || ""),
-      lastUpdatedIso: r.updated_iso || r.last_updated,
-    }))
+    .map((r: any) => {
+      // Status: prefer stage_raw (your pipeline stage name),
+      // then status_label, then any generic status field.
+      const rawStatus =
+        r.stage_raw || r.status_label || r.status || "";
+
+      // Last updated: prefer last_status_change (or variants),
+      // then updated_iso, then last_updated.
+      const lastUpdatedIso =
+        r.last_status_change_iso ||
+        r.lastStatusChange ||
+        r.last_status_change ||
+        r.updated_iso ||
+        r.last_updated ||
+        "";
+
+      return {
+        clientName: r.client_name || "",
+        taxYear: String(r.tax_year),
+        taxReturnType: r.tax_return_type || r.type || "",
+        status: mapClientStatus(rawStatus),
+        lastUpdatedIso,
+      };
+    })
     .sort((a, b) => Number(b.taxYear) - Number(a.taxYear));
 }
 
