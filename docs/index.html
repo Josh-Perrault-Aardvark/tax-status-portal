@@ -71,6 +71,7 @@
       }
       th.sortable {
         cursor: pointer;
+        user-select: none;
       }
       th.sortable:hover {
         background: #e2e8f0;
@@ -96,7 +97,9 @@
                   Tax Return Type
                 </th>
                 <th class="sortable" data-key="status">Status</th>
-                <th class="sortable" data-key="lastUpdatedIso">Last Updated</th>
+                <th class="sortable" data-key="lastUpdatedIso">
+                  Last Updated
+                </th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -106,9 +109,9 @@
     </main>
 
     <script>
-      // -----------------------------------
-      // URL + raw data
-      // -----------------------------------
+      // -----------------------------
+      // Read tickets from URL param
+      // -----------------------------
       function getRawFromQuery() {
         const params = new URLSearchParams(window.location.search);
         const encoded = params.get("tickets");
@@ -120,13 +123,12 @@
         }
       }
 
-      // -----------------------------------
-      // Status mapping + ordering
-      // -----------------------------------
+      // -----------------------------
+      // Status mapping (your values)
+      // -----------------------------
       function mapClientStatus(raw) {
         if (!raw) return "";
 
-        // HubSpot / internal → client-facing label
         const table = {
           "Waiting on client": "Awaiting Client Documents",
           Doing: "Preparation In Progress",
@@ -136,15 +138,13 @@
           "Extension: Filing Accepted": "Extension Accepted with IRS",
           "Return: E-Filed / Filed": "Tax Return Filed with IRS",
           "Return: Filing Accepted": "Tax Return Accepted with IRS",
-          Closed: "Tax Return Complete"
+          Closed: "Tax Return Complete",
         };
 
         return table[raw] || raw;
       }
 
-      // Status ranking: higher number = further along
-      // This is your “never go backwards” order, kept here if
-      // you ever want to use it on the front-end.
+      // Optional “never go backwards” ranking (kept here if you want it later)
       const STATUS_ORDER = {
         "Awaiting Client Documents": 5,
         "Preparation In Progress": 10,
@@ -153,27 +153,29 @@
         "Extension Accepted with IRS": 25,
         "Tax Return Filed with IRS": 30,
         "Tax Return Accepted with IRS": 40,
-        "Tax Return Complete": 45
+        "Tax Return Complete": 45,
       };
 
       function statusScore(status) {
         return STATUS_ORDER[status] ?? 0;
       }
 
-      // -----------------------------------
+      // -----------------------------
       // Date formatting
-      // -----------------------------------
+      // -----------------------------
       function formatDate(iso) {
         if (!iso) return "";
 
-        const d = new Date(Number(iso));
+        // your workflow sends ms timestamps; treat as number when possible
+        const num = Number(iso);
+        const d = isNaN(num) ? new Date(iso) : new Date(num);
         if (isNaN(d.getTime())) return iso;
 
         const day = d.getDate();
         const suffix =
           day >= 11 && day <= 13
             ? "th"
-            : ["st", "nd", "rd"][(day % 10) - 1] || "th";
+            : ["st", "nd", "rd"][day % 10 - 1] || "th";
 
         const month = d.toLocaleString("en-US", { month: "long" });
         const year = d.getFullYear();
@@ -181,9 +183,9 @@
         return `${month} ${day}${suffix}, ${year}`;
       }
 
-      // -----------------------------------
-      // Parse tickets from query param
-      // -----------------------------------
+      // -----------------------------
+      // Parse rows from JSON
+      // -----------------------------
       function parseRows(rawString) {
         if (!rawString) return [];
         let rows;
@@ -195,31 +197,29 @@
           return [];
         }
 
-        return rows
-          .map(function (r) {
-            return {
-              clientName: r.client_name || "",
-              taxYear: String(r.tax_year || ""),
-              taxReturnType: r.tax_return_type || r.type || "",
-              status: mapClientStatus(r.status_label || r.status || ""),
-              lastUpdatedIso: r.updated_iso || r.last_updated || ""
-            };
-          })
-          .sort(function (a, b) {
-            // default initial sort: most recent tax year first
-            return Number(b.taxYear) - Number(a.taxYear);
-          });
+        return rows.map(function (r) {
+          return {
+            clientName: r.client_name || "",
+            taxYear: String(r.tax_year || ""),
+            taxReturnType: r.tax_return_type || r.type || "",
+            status: mapClientStatus(r.status_label || r.status || ""),
+            lastUpdatedIso: r.updated_iso || r.last_updated || "",
+          };
+        });
       }
 
+      // -----------------------------
+      // Error display
+      // -----------------------------
       function showError(message) {
         var el = document.getElementById("error");
         el.textContent = message;
         el.style.display = "block";
       }
 
-      // -----------------------------------
-      // Sorting logic
-      // -----------------------------------
+      // -----------------------------
+      // Sorting
+      // -----------------------------
       let currentRows = [];
       let sortState = { key: null, direction: "asc" };
 
@@ -236,13 +236,10 @@
           } else if (key === "lastUpdatedIso") {
             const na = Number(va);
             const nb = Number(vb);
-            if (!isNaN(na) && !isNaN(nb)) {
-              va = na;
-              vb = nb;
-            } else {
-              va = new Date(va).getTime() || 0;
-              vb = new Date(vb).getTime() || 0;
-            }
+            const da = isNaN(na) ? new Date(va).getTime() : na;
+            const db = isNaN(nb) ? new Date(vb).getTime() : nb;
+            va = da || 0;
+            vb = db || 0;
           } else {
             va = (va || "").toString().toLowerCase();
             vb = (vb || "").toString().toLowerCase();
@@ -255,12 +252,15 @@
       }
 
       function attachSortHandlers() {
-        const headers = document.querySelectorAll("th.sortable");
+        const nodeList = document.querySelectorAll("th.sortable");
+        const headers = Array.prototype.slice.call(nodeList);
+
         headers.forEach(function (th) {
           th.addEventListener("click", function () {
             const key = th.getAttribute("data-key");
             if (!key) return;
 
+            // toggle / set direction
             if (sortState.key === key) {
               sortState.direction =
                 sortState.direction === "asc" ? "desc" : "asc";
@@ -279,9 +279,9 @@
         });
       }
 
-      // -----------------------------------
-      // Rendering
-      // -----------------------------------
+      // -----------------------------
+      // Render table
+      // -----------------------------
       function renderTable(rows) {
         var tbody = document.getElementById("rows");
         tbody.innerHTML = "";
@@ -325,14 +325,16 @@
         });
       }
 
-      // -----------------------------------
+      // -----------------------------
       // Init
-      // -----------------------------------
+      // -----------------------------
       (function init() {
         try {
-          var raw = getRawFromQuery();
+          const raw = getRawFromQuery();
           currentRows = parseRows(raw);
           attachSortHandlers();
+          // default initial sort: newest year first
+          currentRows = sortRows(currentRows, "taxYear", "desc");
           renderTable(currentRows);
         } catch (e) {
           console.error(e);
