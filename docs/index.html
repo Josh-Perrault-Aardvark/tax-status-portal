@@ -123,31 +123,16 @@
 
         const table = {
           // Main statuses
-          "Awaiting Client Documents": "Awaiting Client Documents",
-
-          "Preparation in Progress": "Preparation In Progress",
-          "Preparation In Progress": "Preparation In Progress",
-
-          "Review in Progress": "Review In Progress",
-          "Review In Progress": "Review In Progress",
-
-          "Extension Filed with IRS": "Extension Filed with IRS",
-
-          "Extension Accepted": "Extension Accepted with IRS",
-          "Extension Accepted with IRS": "Extension Accepted with IRS",
-
-          "Tax Return Filed with IRS": "Tax Return Filed with IRS",
-
-          "Tax Return Accepted": "Tax Return Accepted with IRS",
-          "Tax Return Accepted with IRS": "Tax Return Accepted with IRS",
-
-          "Tax Return Complete": "Tax Return Complete",
-
-          // Other possible raw values
-          "In Progress": "Preparation In Progress",
-          "Documents Received": "Documents Received",
-          "Review SharePoint Folder": "Review SP",
-          "Review SP": "Review SP"
+          "Waiting on client": "Awaiting Client Documents",
+          "Doing": "Preparation In Progress",
+          "Done - Ready for Reviewer": "Preparation completed",
+          "Done - Ready for delivery": "Review in progress",
+          "Extension: E-Filed / Filed": "Extension filed with IRS",
+          "Extension: Filing Accepted": "Extension accepted by IRS",
+          "Return: E-Filed / Filed": "Tax return filed with IRS",
+          "Return: Filing Accepted": "Tax return accepted by IRS",
+          "Waiting for Pickup": "Tax return ready for pickup",
+          "Closed": "Tax Return Complete",
         };
 
         return table[raw] || raw;
@@ -160,12 +145,14 @@
       const STATUS_ORDER = {
         "Awaiting Client Documents": 5,
         "Preparation In Progress": 10,
-        "Review In Progress": 15,
-        "Extension Filed with IRS": 20,
-        "Extension Accepted with IRS": 25,
-        "Tax Return Filed with IRS": 30,
-        "Tax Return Accepted with IRS": 40,
-        "Tax Return Complete": 45
+        "Preparation completed": 15,
+        "Review in progress": 20,
+        "Extension filed with IRS": 25,
+        "Extension accepted by IRS": 30,
+        "Tax return filed with IRS": 40,
+        "Tax return accepted by IRS": 45,
+        "Tax return ready for pickup": 50,
+        "Tax Return Complete" 55,
       };
 
       // Statuses that UNLOCK going backwards after they’re reached
