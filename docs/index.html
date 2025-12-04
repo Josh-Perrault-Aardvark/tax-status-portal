@@ -116,23 +116,47 @@
       }
 
       // ---------------------------
-      // Map internal status → client-friendly
+      // Map raw internal statuses → client-facing labels
       // ---------------------------
       function mapClientStatus(raw) {
         if (!raw) return "";
 
         const table = {
-          "Waiting on client": "Awaiting Client Documents",
-          Doing: "Preparation In Progress",
-          "Done - Ready for Reviewer": "Review In Progress",
-          "Done - Ready for delivery": "Review Completed",
-          "Extension: E-Filed / Filed": "Extension Filed with IRS",
-          "Extension: Filing Accepted": "Extension Accepted with IRS",
-          "Return: E-Filed / Filed": "Tax Return Filed with IRS",
-          "Return: Filing Accepted": "Tax Return Accepted with IRS",
-          Closed: "Tax Return Complete"
+          // Main statuses
+          "Awaiting Client Documents": "Awaiting Client Documents",
+
+          "Preparation in Progress": "Preparation In Progress",
+          "Preparation In Progress": "Preparation In Progress",
+
+          "Review in Progress": "Review In Progress",
+          "Review In Progress": "Review In Progress",
+
+          "Extension Filed with IRS": "Extension Filed with IRS",
+
+          "Extension Accepted": "Extension Accepted with IRS",
+          "Extension Accepted with IRS": "Extension Accepted with IRS",
+
+          "Tax Return Filed with IRS": "Tax Return Filed with IRS",
+
+          "Tax Return Accepted": "Tax Return Accepted with IRS",
+          "Tax Return Accepted with IRS": "Tax Return Accepted with IRS",
+
+          "Tax Return Complete": "Tax Return Complete",
+
+          // Other possible raw values
+          "In Progress": "Preparation In Progress",
+          "Documents Received": "Documents Received",
+          "Review SharePoint Folder": "Review SP",
+          "Review SP": "Review SP"
         };
-        
+
+        return table[raw] || raw;
+      }
+
+      // ---------------------------
+      // Status ranking: higher = further along
+      // This is the core ordering.
+      // ---------------------------
       const STATUS_ORDER = {
         "Awaiting Client Documents": 5,
         "Preparation In Progress": 10,
@@ -143,7 +167,71 @@
         "Tax Return Accepted with IRS": 40,
         "Tax Return Complete": 45
       };
-        return table[raw] || raw;
+
+      // Statuses that UNLOCK going backwards after they’re reached
+      const STATUS_UNLOCK_REGRESSION = new Set([
+        "Tax Return Complete",
+        "Tax Return Accepted with IRS"
+      ]);
+
+      function statusScore(status) {
+        return STATUS_ORDER[status] ?? 0;
+      }
+
+      // Enforce "never go backwards" UNTIL we hit an unlock status
+      function enforceNonDecreasingStatus(rows) {
+        const stateByKey = {};
+
+        // Work oldest → newest
+        const sorted = rows
+          .slice()
+          .sort(
+            (a, b) =>
+              (Number(a.lastUpdatedIso) || 0) -
+              (Number(b.lastUpdatedIso) || 0)
+          );
+
+        sorted.forEach((row) => {
+          const key =
+            row.clientName +
+            "|" +
+            row.taxYear +
+            "|" +
+            row.taxReturnType;
+
+          let state = stateByKey[key];
+          if (!state) {
+            state = {
+              bestScore: 0,
+              bestLabel: null,
+              unlocked: false
+            };
+          }
+
+          const score = statusScore(row.status);
+
+          if (!state.unlocked) {
+            // still in "no regression" mode
+            if (score >= state.bestScore) {
+              state.bestScore = score;
+              state.bestLabel = row.status;
+            } else {
+              // clamp backwards status to best seen so far
+              row.status = state.bestLabel || row.status;
+            }
+
+            // AFTER applying, see if this status unlocks regression
+            if (STATUS_UNLOCK_REGRESSION.has(row.status)) {
+              state.unlocked = true;
+            }
+          } else {
+            // unlocked: do nothing, allow any status
+          }
+
+          stateByKey[key] = state;
+        });
+
+        return rows;
       }
 
       // ---------------------------
@@ -155,7 +243,7 @@
       function normalizeTaxYear(value) {
         if (!value) return "";
         if (/^\d{4}$/.test(value)) {
-          return value; // already full year
+          return value;
         }
         const match = /^TY(\d{2})$/i.exec(value.trim());
         if (match) {
@@ -193,7 +281,7 @@
       var currentRows = [];
       var currentSort = {
         key: "taxYear",
-        dir: "desc", // desc by default for year
+        dir: "desc"
       };
 
       function getSortValue(row, key) {
@@ -227,7 +315,7 @@
       }
 
       // ---------------------------
-      // Parse JSON rows from Assembly / Retool
+      // Parse JSON rows from tickets param
       // ---------------------------
       function parseRows(rawString) {
         if (!rawString) return [];
@@ -240,16 +328,21 @@
           return [];
         }
 
-        return rows.map(function (r) {
+        var mapped = rows.map(function (r) {
           var rawYear = String(r.tax_year || "");
           return {
             clientName: r.client_name || "",
             taxYear: normalizeTaxYear(rawYear),
             taxReturnType: r.tax_return_type || r.type || "",
             status: mapClientStatus(r.status_label || r.status || ""),
-            lastUpdatedIso: r.updated_iso || r.last_updated || "",
+            lastUpdatedIso: r.updated_iso || r.last_updated || ""
           };
         });
+
+        // Enforce "no backwards" until an unlock status
+        enforceNonDecreasingStatus(mapped);
+
+        return mapped;
       }
 
       // ---------------------------
@@ -326,11 +419,9 @@
               var key = th.getAttribute("data-sort");
 
               if (currentSort.key === key) {
-                // toggle direction
                 currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
               } else {
                 currentSort.key = key;
-                // default direction: for numbers/dates use desc, else asc
                 if (key === "taxYear" || key === "lastUpdatedIso") {
                   currentSort.dir = "desc";
                 } else {
