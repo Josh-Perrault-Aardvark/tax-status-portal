@@ -133,14 +133,24 @@
 
       function formatDate(iso) {
         if (!iso) return "";
-        const d = new Date(iso);
+      
+        const d = new Date(Number(iso));
         if (isNaN(d.getTime())) return iso;
-        return d.toLocaleDateString("en-US", {
-          month: "short",
-          day: "2-digit",
-          year: "numeric",
-        });
+      
+        const day = d.getDate();
+      
+        // Figure out the ordinal suffix
+        const suffix =
+          day >= 11 && day <= 13
+            ? "th"
+            : ["st", "nd", "rd"][((day % 10) - 1)] || "th";
+      
+        const month = d.toLocaleString("en-US", { month: "long" });
+        const year = d.getFullYear();
+      
+        return `${month} ${day}${suffix}, ${year}`;
       }
+
 
       function parseRows(rawString) {
         if (!rawString) return [];
