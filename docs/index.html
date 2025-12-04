@@ -1,146 +1,322 @@
-<script>
-  function getRawFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    const encoded = params.get("tickets");
-    if (!encoded) return "";
-    try {
-      return decodeURIComponent(encoded);
-    } catch {
-      return encoded;
-    }
-  }
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tax Return Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #ffffff;
+        color: #0f172a;
+        margin: 0;
+      }
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 24px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 16px;
+      }
+      .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+        color: #b91c1c;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      .table-wrapper {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      thead {
+        background: #f1f5f9;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        text-align: left;
+      }
+      th {
+        font-size: 12px;
+        font-weight: 600;
+        color: #475569;
+      }
+      tbody tr:nth-child(odd) {
+        background: #ffffff;
+      }
+      tbody tr:nth-child(even) {
+        background: #f8fafc;
+      }
+      tbody tr + tr {
+        border-top: 1px solid #e2e8f0;
+      }
+      td.client {
+        font-weight: 500;
+      }
+      td.empty {
+        text-align: center;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>Tax Return Status</h1>
+      </header>
 
-  function mapClientStatus(raw) {
-    if (!raw) return "";
+      <div id="error" class="alert" style="display: none"></div>
 
-    const table = {
-      "In Progress": "In Progress",
-      "Preparation in Progress": "In Progress",
-      "Preparation Completed": "Ready for Review",
-      "Review in Progress": "In Review",
-      "Review Completed": "Reviewed",
-      "Awaiting Client Documents": "Waiting on You",
-      "Tax Return Filed with IRS": "Filed with IRS",
-      "Tax Return Accepted": "Accepted by IRS",
-      "Extension Filed with IRS": "Extension Filed",
-      "Extension Accepted": "Extension Accepted",
-      "Tax Return Complete": "Complete",
-      "Review SharePoint Folder": "Review SP",
-      "Documents Received": "Documents Received",
-    };
+      <section>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Tax Year</th>
+                <th>Tax Return Type</th>
+                <th>Status</th>
+                <th>Last Updated</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
-    return table[raw] || raw;
-  }
+    <script>
+      function getRawFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const encoded = params.get("tickets");
+        if (!encoded) return "";
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          return encoded;
+        }
+      }
 
-  // -----------------------------
-  // 🔥 Correct “December 4th, 2025” formatter
-  // -----------------------------
-  function formatDate(iso) {
-    if (!iso) return "";
+      // Map raw status coming from Assembly → client-friendly label
+      function mapClientStatus(raw) {
+        if (!raw) return "";
 
-    const ms = Number(iso);
-    if (!ms || ms < 0) return iso;
-
-    const d = new Date(ms);
-    if (isNaN(d.getTime())) return iso;
-
-    const day = d.getDate();
-
-    // Ordinal suffix logic
-    const suffix =
-      day >= 11 && day <= 13
-        ? "th"
-        : ["st", "nd", "rd"][(day % 10) - 1] || "th";
-
-    const month = d.toLocaleString("en-US", { month: "long" });
-    const year = d.getFullYear();
-
-    return `${month} ${day}${suffix}, ${year}`;
-  }
-
-  function parseRows(rawString) {
-    if (!rawString) return [];
-    let rows;
-    try {
-      rows = JSON.parse(rawString);
-    } catch (e) {
-      console.error("Bad JSON for tax return status", e);
-      showError("Failed to parse tax return status data.");
-      return [];
-    }
-
-    return rows
-      .map(function (r) {
-        return {
-          clientName: r.client_name || "",
-          taxYear: String(r.tax_year || ""),
-          taxReturnType: r.tax_return_type || r.type || "",
-          status: mapClientStatus(r.status_label || r.status || ""),
-          lastUpdatedIso: r.updated_iso || r.last_updated || "",
+        const table = {
+          "In Progress": "In Progress",
+          "Preparation in Progress": "In Progress",
+          "Preparation Completed": "Ready for Review",
+          "Review in Progress": "In Review",
+          "Review Completed": "Reviewed",
+          "Awaiting Client Documents": "Waiting on You",
+          "Tax Return Filed with IRS": "Filed with IRS",
+          "Tax Return Accepted": "Accepted by IRS",
+          "Extension Filed with IRS": "Extension Filed",
+          "Extension Accepted": "Extension Accepted",
+          "Tax Return Complete": "Complete",
+          // Handle both spellings just in case
+          "Review Sharepoint Folder": "Review Sharepoint Folder",
+          "Review SharePoint Folder": "Review Sharepoint Folder",
+          "Documents Received": "Documents Received",
+          "Not Started": "Not Started"
         };
-      })
-      .sort(function (a, b) {
-        return Number(b.taxYear) - Number(a.taxYear);
-      });
-  }
 
-  function showError(message) {
-    var el = document.getElementById("error");
-    el.textContent = message;
-    el.style.display = "block";
-  }
+        return table[raw] || raw;
+      }
 
-  function renderTable(rows) {
-    var tbody = document.getElementById("rows");
-    tbody.innerHTML = "";
+      // Status ranking: higher number = further along.
+      // This is the "never go backwards" brain.
+      const STATUS_ORDER = {
+        "Not Started": 0,
+        "Documents Received": 10,
+        "Waiting on You": 15,
+        "Awaiting Client Documents": 15,
+        "In Progress": 20,
+        "Ready for Review": 30,
+        "In Review": 40,
+        "Review Sharepoint Folder": 45,
+        "Reviewed": 50,
+        "Filed with IRS": 60,
+        "Accepted by IRS": 70,
+        "Extension Filed": 80,
+        "Extension Accepted": 90,
+        "Complete": 100
+      };
 
-    if (!rows.length) {
-      var tr = document.createElement("tr");
-      var td = document.createElement("td");
-      td.colSpan = 5;
-      td.className = "empty";
-      td.textContent = "No tax return status data available.";
-      tr.appendChild(td);
-      tbody.appendChild(tr);
-      return;
-    }
+      function statusScore(status) {
+        return STATUS_ORDER[status] ?? 0;
+      }
 
-    rows.forEach(function (row, idx) {
-      var tr = document.createElement("tr");
+      // Convert timestamp (ms) → "December 2nd, 2025"
+      function formatDate(iso) {
+        if (!iso) return "";
 
-      var tdClient = document.createElement("td");
-      tdClient.className = "client";
-      tdClient.textContent = row.clientName;
-      tr.appendChild(tdClient);
+        // We get ms since epoch from Abbalog/Assembly
+        const d =
+          typeof iso === "number" || /^\d+$/.test(String(iso))
+            ? new Date(Number(iso))
+            : new Date(iso);
 
-      var tdYear = document.createElement("td");
-      tdYear.textContent = row.taxYear;
-      tr.appendChild(tdYear);
+        if (isNaN(d.getTime())) return iso;
 
-      var tdType = document.createElement("td");
-      tdType.textContent = row.taxReturnType;
-      tr.appendChild(tdType);
+        const day = d.getDate();
 
-      var tdStatus = document.createElement("td");
-      tdStatus.textContent = row.status;
-      tr.appendChild(tdStatus);
+        const suffix =
+          day >= 11 && day <= 13
+            ? "th"
+            : ["st", "nd", "rd"][(day % 10) - 1] || "th";
 
-      var tdUpdated = document.createElement("td");
-      tdUpdated.textContent = formatDate(row.lastUpdatedIso);
-      tr.appendChild(tdUpdated);
+        const month = d.toLocaleString("en-US", { month: "long" });
+        const year = d.getFullYear();
 
-      tbody.appendChild(tr);
-    });
-  }
+        return `${month} ${day}${suffix}, ${year}`;
+      }
 
-  (function init() {
-    try {
-      var raw = getRawFromQuery();
-      var rows = parseRows(raw);
-      renderTable(rows);
-    } catch (e) {
-      console.error(e);
-      showError("Failed to load tax return status data.");
-    }
-  })();
-</script>
+      function parseRows(rawString) {
+        if (!rawString) return [];
+        let rows;
+        try {
+          rows = JSON.parse(rawString);
+        } catch (e) {
+          console.error("Bad JSON for tax return status", e);
+          showError("Failed to parse tax return status data.");
+          return [];
+        }
+
+        // First map raw data → normalized rows
+        const mapped = rows.map(function (r) {
+          const status = mapClientStatus(r.status_label || r.status || "");
+          return {
+            clientName: r.client_name || "",
+            taxYear: String(r.tax_year || ""),
+            taxReturnType: r.tax_return_type || r.type || "",
+            status: status,
+            lastUpdatedIso: r.updated_iso || r.last_updated || ""
+          };
+        });
+
+        // Then collapse to highest-status per (client, year, type)
+        const reduced = reduceToHighestStatus(mapped);
+
+        // Sort newest year first
+        reduced.sort(function (a, b) {
+          return Number(b.taxYear) - Number(a.taxYear);
+        });
+
+        return reduced;
+      }
+
+      // Never-go-backwards reducer
+      function reduceToHighestStatus(rows) {
+        const bestByKey = {};
+
+        rows.forEach(function (row) {
+          const key =
+            row.clientName + "::" + row.taxYear + "::" + row.taxReturnType;
+
+          const currentScore = statusScore(row.status);
+          const existing = bestByKey[key];
+
+          if (!existing) {
+            bestByKey[key] = row;
+            return;
+          }
+
+          const existingScore = statusScore(existing.status);
+
+          if (currentScore > existingScore) {
+            // strictly better status → replace
+            bestByKey[key] = row;
+          } else if (currentScore === existingScore) {
+            // same status level → keep the more recent one
+            const existingTime =
+              Number(existing.lastUpdatedIso) ||
+              Date.parse(existing.lastUpdatedIso) ||
+              0;
+            const newTime =
+              Number(row.lastUpdatedIso) ||
+              Date.parse(row.lastUpdatedIso) ||
+              0;
+            if (newTime > existingTime) {
+              bestByKey[key] = row;
+            }
+          }
+          // if currentScore < existingScore → ignore (prevents going backwards)
+        });
+
+        return Object.values(bestByKey);
+      }
+
+      function showError(message) {
+        var el = document.getElementById("error");
+        el.textContent = message;
+        el.style.display = "block";
+      }
+
+      function renderTable(rows) {
+        var tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+
+        if (!rows.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "empty";
+          td.textContent = "No tax return status data available.";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        rows.forEach(function (row) {
+          var tr = document.createElement("tr");
+
+          var tdClient = document.createElement("td");
+          tdClient.className = "client";
+          tdClient.textContent = row.clientName;
+          tr.appendChild(tdClient);
+
+          var tdYear = document.createElement("td");
+          tdYear.textContent = row.taxYear;
+          tr.appendChild(tdYear);
+
+          var tdType = document.createElement("td");
+          tdType.textContent = row.taxReturnType;
+          tr.appendChild(tdType);
+
+          var tdStatus = document.createElement("td");
+          tdStatus.textContent = row.status;
+          tr.appendChild(tdStatus);
+
+          var tdUpdated = document.createElement("td");
+          tdUpdated.textContent = formatDate(row.lastUpdatedIso);
+          tr.appendChild(tdUpdated);
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      (function init() {
+        try {
+          var raw = getRawFromQuery();
+          var rows = parseRows(raw);
+          renderTable(rows);
+        } catch (e) {
+          console.error(e);
+          showError("Failed to load tax return status data.");
+        }
+      })();
+    </script>
+  </body>
+</html>
