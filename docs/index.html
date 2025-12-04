@@ -158,18 +158,20 @@ function mapClientStatus(raw) {
       // ---------------------------
       // Status ranking: higher = further along
       // ---------------------------
-      const STATUS_ORDER = {
-        "Awaiting Client Documents": 5,
-        "Preparation In Progress": 10,
-        "Preparation completed": 15,
-        "Review in progress": 20,
-        "Extension filed with IRS": 25,
-        "Extension accepted by IRS": 30,
-        "Tax return filed with IRS": 40,
-        "Tax return accepted by IRS": 45,
-        "Tax return ready for pickup": 50,
-        "Tax Return Complete": 55
-      };
+// Status ranking: higher number = further along.
+const STATUS_ORDER = {
+  "Not Started": 0,
+  "Awaiting Client Documents": 5,
+  "Preparation In Progress": 10,
+  "Preparation completed": 15,
+  "Review in progress": 20,
+  "Extension filed with IRS": 25,
+  "Extension accepted by IRS": 30,
+  "Tax return filed with IRS": 40,
+  "Tax return accepted by IRS": 45,
+  "Tax return ready for pickup": 50,
+  "Tax Return Complete": 55,
+};
 
       // Statuses that temporarily UNLOCK going backwards
       // (window is only while the *current* status is one of these)
