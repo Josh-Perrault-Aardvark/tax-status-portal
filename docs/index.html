@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tax Return Status</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #ffffff;
+        color: #0f172a;
+        margin: 0;
+      }
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 24px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 16px;
+      }
+      .alert {
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+        color: #b91c1c;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      .table-wrapper {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      thead {
+        background: #f1f5f9;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        text-align: left;
+      }
+      th {
+        font-size: 12px;
+        font-weight: 600;
+        color: #475569;
+      }
+      tbody tr:nth-child(odd) {
+        background: #ffffff;
+      }
+      tbody tr:nth-child(even) {
+        background: #f8fafc;
+      }
+      tbody tr + tr {
+        border-top: 1px solid #e2e8f0;
+      }
+      td.client {
+        font-weight: 500;
+      }
+      td.empty {
+        text-align: center;
+        color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>Tax Return Status</h1>
+      </header>
+
+      <div id="error" class="alert" style="display: none"></div>
+
+      <section>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Tax Year</th>
+                <th>Tax Return Type</th>
+                <th>Status</th>
+                <th>Last Updated</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function getRawFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const encoded = params.get("tickets");
+        if (!encoded) return "";
+        try {
+          return decodeURIComponent(encoded);
+        } catch {
+          return encoded;
+        }
+      }
+
+      function mapClientStatus(raw) {
+        if (!raw) return "";
+
+        const table = {
+          "In Progress": "In Progress",
+          "Preparation in Progress": "In Progress",
+          "Preparation Completed": "Ready for Review",
+          "Review in Progress": "In Review",
+          "Review Completed": "Reviewed",
+          "Awaiting Client Documents": "Waiting on You",
+          "Tax Return Filed with IRS": "Filed with IRS",
+          "Tax Return Accepted": "Accepted by IRS",
+          "Extension Filed with IRS": "Extension Filed",
+          "Extension Accepted": "Extension Accepted",
+          "Tax Return Complete": "Complete",
+          "Review SharePoint Folder": "Review SP",
+          "Documents Received": "Documents Received",
+        };
+
+        return table[raw] || raw;
+      }
+
+      function formatDate(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+        });
+      }
+
+      function parseRows(rawString) {
+        if (!rawString) return [];
+        let rows;
+        try {
+          rows = JSON.parse(rawString);
+        } catch (e) {
+          console.error("Bad JSON for tax return status", e);
+          showError("Failed to parse tax return status data.");
+          return [];
+        }
+
+        return rows
+          .map(function (r) {
+            return {
+              clientName: r.client_name || "",
+              taxYear: String(r.tax_year || ""),
+              taxReturnType: r.tax_return_type || r.type || "",
+              status: mapClientStatus(r.status_label || r.status || ""),
+              lastUpdatedIso: r.updated_iso || r.last_updated || "",
+            };
+          })
+          .sort(function (a, b) {
+            return Number(b.taxYear) - Number(a.taxYear);
+          });
+      }
+
+      function showError(message) {
+        var el = document.getElementById("error");
+        el.textContent = message;
+        el.style.display = "block";
+      }
+
+      function renderTable(rows) {
+        var tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+
+        if (!rows.length) {
+          var tr = document.createElement("tr");
+          var td = document.createElement("td");
+          td.colSpan = 5;
+          td.className = "empty";
+          td.textContent = "No tax return status data available.";
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+          return;
+        }
+
+        rows.forEach(function (row, idx) {
+          var tr = document.createElement("tr");
+
+          var tdClient = document.createElement("td");
+          tdClient.className = "client";
+          tdClient.textContent = row.clientName;
+          tr.appendChild(tdClient);
+
+          var tdYear = document.createElement("td");
+          tdYear.textContent = row.taxYear;
+          tr.appendChild(tdYear);
+
+          var tdType = document.createElement("td");
+          tdType.textContent = row.taxReturnType;
+          tr.appendChild(tdType);
+
+          var tdStatus = document.createElement("td");
+          tdStatus.textContent = row.status;
+          tr.appendChild(tdStatus);
+
+          var tdUpdated = document.createElement("td");
+          tdUpdated.textContent = formatDate(row.lastUpdatedIso);
+          tr.appendChild(tdUpdated);
+
+          tbody.appendChild(tr);
+        });
+      }
+
+      (function init() {
+        try {
+          var raw = getRawFromQuery();
+          var rows = parseRows(raw);
+          renderTable(rows);
+        } catch (e) {
+          console.error(e);
+          showError("Failed to load tax return status data.");
+        }
+      })();
+    </script>
+  </body>
+</html>
