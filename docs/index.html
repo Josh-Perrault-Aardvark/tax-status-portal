@@ -53,6 +53,9 @@
         font-weight: 600;
         color: #475569;
       }
+      th.sortable {
+        cursor: pointer;
+      }
       tbody tr:nth-child(odd) {
         background: #ffffff;
       }
@@ -84,11 +87,11 @@
           <table>
             <thead>
               <tr>
-                <th>Client</th>
-                <th>Tax Year</th>
-                <th>Tax Return Type</th>
-                <th>Status</th>
-                <th>Last Updated</th>
+                <th class="sortable" data-sort="clientName">Client</th>
+                <th class="sortable" data-sort="taxYear">Tax Year</th>
+                <th class="sortable" data-sort="taxReturnType">Tax Return Type</th>
+                <th class="sortable" data-sort="status">Status</th>
+                <th class="sortable" data-sort="lastUpdatedIso">Last Updated</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -119,21 +122,27 @@
         if (!raw) return "";
 
         const table = {
-          "In Progress": "In Progress",
-          "Preparation in Progress": "In Progress",
-          "Preparation Completed": "Ready for Review",
-          "Review in Progress": "In Review",
-          "Review Completed": "Reviewed",
-          "Awaiting Client Documents": "Waiting on You",
-          "Tax Return Filed with IRS": "Filed with IRS",
-          "Tax Return Accepted": "Accepted by IRS",
-          "Extension Filed with IRS": "Extension Filed",
-          "Extension Accepted": "Extension Accepted",
-          "Tax Return Complete": "Complete",
-          "Review SharePoint Folder": "Review SP",
-          "Documents Received": "Documents Received",
+          "Waiting on client": "Awaiting Client Documents",
+          Doing: "Preparation In Progress",
+          "Done - Ready for Reviewer": "Review In Progress",
+          "Done - Ready for delivery": "Review Completed",
+          "Extension: E-Filed / Filed": "Extension Filed with IRS",
+          "Extension: Filing Accepted": "Extension Accepted with IRS",
+          "Return: E-Filed / Filed": "Tax Return Filed with IRS",
+          "Return: Filing Accepted": "Tax Return Accepted with IRS",
+          Closed: "Tax Return Complete"
         };
-
+        
+      const STATUS_ORDER = {
+        "Awaiting Client Documents": 5,
+        "Preparation In Progress": 10,
+        "Review In Progress": 15,
+        "Extension Filed with IRS": 20,
+        "Extension Accepted with IRS": 25,
+        "Tax Return Filed with IRS": 30,
+        "Tax Return Accepted with IRS": 40,
+        "Tax Return Complete": 45
+      };
         return table[raw] || raw;
       }
 
@@ -145,22 +154,15 @@
       // ---------------------------
       function normalizeTaxYear(value) {
         if (!value) return "";
-
-        // already a plain 4-digit year
         if (/^\d{4}$/.test(value)) {
-          return value;
+          return value; // already full year
         }
-
-        // match "TY20", "ty21", etc
         const match = /^TY(\d{2})$/i.exec(value.trim());
         if (match) {
           const yy = Number(match[1]);
-          // 00–49 → 2000+, 50–99 → 1900+
           const fullYear = yy < 50 ? 2000 + yy : 1900 + yy;
           return String(fullYear);
         }
-
-        // anything else, just return as-is
         return value;
       }
 
@@ -186,11 +188,50 @@
       }
 
       // ---------------------------
+      // GLOBAL STATE FOR SORTING
+      // ---------------------------
+      var currentRows = [];
+      var currentSort = {
+        key: "taxYear",
+        dir: "desc", // desc by default for year
+      };
+
+      function getSortValue(row, key) {
+        if (key === "taxYear") {
+          return Number(row.taxYear) || 0;
+        }
+        if (key === "lastUpdatedIso") {
+          return Number(row.lastUpdatedIso) || 0;
+        }
+        var v = row[key];
+        if (v == null) return "";
+        return String(v).toLowerCase();
+      }
+
+      function applySortAndRender() {
+        var key = currentSort.key;
+        var dir = currentSort.dir;
+        var multiplier = dir === "asc" ? 1 : -1;
+
+        var rows = currentRows.slice();
+        rows.sort(function (a, b) {
+          var va = getSortValue(a, key);
+          var vb = getSortValue(b, key);
+
+          if (va < vb) return -1 * multiplier;
+          if (va > vb) return 1 * multiplier;
+          return 0;
+        });
+
+        renderTable(rows);
+      }
+
+      // ---------------------------
       // Parse JSON rows from Assembly / Retool
       // ---------------------------
       function parseRows(rawString) {
         if (!rawString) return [];
-        let rows;
+        var rows;
         try {
           rows = JSON.parse(rawString);
         } catch (e) {
@@ -199,21 +240,16 @@
           return [];
         }
 
-        return rows
-          .map(function (r) {
-            const rawYear = String(r.tax_year || "");
-            return {
-              clientName: r.client_name || "",
-              taxYear: normalizeTaxYear(rawYear),
-              taxReturnType: r.tax_return_type || r.type || "",
-              status: mapClientStatus(r.status_label || r.status || ""),
-              lastUpdatedIso: r.updated_iso || r.last_updated || "",
-            };
-          })
-          .sort(function (a, b) {
-            // Default sort: newest tax year first
-            return Number(b.taxYear) - Number(a.taxYear);
-          });
+        return rows.map(function (r) {
+          var rawYear = String(r.tax_year || "");
+          return {
+            clientName: r.client_name || "",
+            taxYear: normalizeTaxYear(rawYear),
+            taxReturnType: r.tax_return_type || r.type || "",
+            status: mapClientStatus(r.status_label || r.status || ""),
+            lastUpdatedIso: r.updated_iso || r.last_updated || "",
+          };
+        });
       }
 
       // ---------------------------
@@ -277,8 +313,34 @@
       (function init() {
         try {
           var raw = getRawFromQuery();
-          var rows = parseRows(raw);
-          renderTable(rows);
+          currentRows = parseRows(raw);
+
+          // initial sort (taxYear desc)
+          currentSort = { key: "taxYear", dir: "desc" };
+          applySortAndRender();
+
+          // Wire up header clicks
+          var headers = document.querySelectorAll("th.sortable[data-sort]");
+          headers.forEach(function (th) {
+            th.addEventListener("click", function () {
+              var key = th.getAttribute("data-sort");
+
+              if (currentSort.key === key) {
+                // toggle direction
+                currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
+              } else {
+                currentSort.key = key;
+                // default direction: for numbers/dates use desc, else asc
+                if (key === "taxYear" || key === "lastUpdatedIso") {
+                  currentSort.dir = "desc";
+                } else {
+                  currentSort.dir = "asc";
+                }
+              }
+
+              applySortAndRender();
+            });
+          });
         } catch (e) {
           console.error(e);
           showError("Failed to load tax return status data.");
