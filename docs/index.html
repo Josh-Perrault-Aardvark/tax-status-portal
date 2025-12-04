@@ -351,16 +351,18 @@ const STATUS_ORDER = {
           return [];
         }
 
-        var mapped = rows.map(function (r) {
-          var rawYear = String(r.tax_year || "");
-          return {
-            clientName: r.client_name || "",
-            taxYear: normalizeTaxYear(rawYear),
-            taxReturnType: r.tax_return_type || r.type || "",
-            status: mapClientStatus(r.status_label || r.status || ""),
-            lastUpdatedIso: r.updated_iso || r.last_updated || ""
-          };
-        });
+var mapped = rows.map(function (r) {
+  var rawYear = String(r.tax_year || "");
+  var rawStatus = r.status_label || r.status || "";
+
+  return {
+    clientName: r.client_name || "",
+    taxYear: normalizeTaxYear(rawYear),
+    taxReturnType: r.tax_return_type || r.type || "",
+    status: mapClientStatus(rawStatus),
+    lastUpdatedIso: r.updated_iso || r.last_updated || ""
+  };
+});
 
         // Apply extension-window logic
         enforceStatusWithExtensionWindow(mapped);
