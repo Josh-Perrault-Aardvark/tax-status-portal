@@ -114,22 +114,15 @@
         if (!raw) return "";
 
         const table = {
-          "In Progress": "In Progress",
-          "Preparation in Progress": "In Progress",
-          "Preparation Completed": "Ready for Review",
-          "Review in Progress": "In Review",
-          "Review Completed": "Reviewed",
-          "Awaiting Client Documents": "Waiting on You",
-          "Tax Return Filed with IRS": "Filed with IRS",
-          "Tax Return Accepted": "Accepted by IRS",
-          "Extension Filed with IRS": "Extension Filed",
-          "Extension Accepted": "Extension Accepted",
-          "Tax Return Complete": "Complete",
-          // Handle both spellings just in case
-          "Review Sharepoint Folder": "Review Sharepoint Folder",
-          "Review SharePoint Folder": "Review Sharepoint Folder",
-          "Documents Received": "Documents Received",
-          "Not Started": "Not Started"
+          "Waiting on client": "Awaiting Client Documents",
+          "Doing": "Preparation In Progress",
+          "Done - Ready for Reviewer": "Review In Progress",
+          "Done - Ready for delivery": "Review Completed",
+          "Extension: E-Filed / Filed": "Extension Filed with IRS",
+          "Extension: Filing Accepted": "Extension Accepted with IRS",
+          "Return: E-Filed / Filed": "Tax Return Filed with IRS",
+          "Return: Filing Accepted": "Tax Return Accepted with IRS",
+          "Closed": "Tax Return Complete",
         };
 
         return table[raw] || raw;
@@ -138,20 +131,14 @@
       // Status ranking: higher number = further along.
       // This is the "never go backwards" brain.
       const STATUS_ORDER = {
-        "Not Started": 0,
-        "Documents Received": 10,
-        "Waiting on You": 15,
-        "Awaiting Client Documents": 15,
-        "In Progress": 20,
-        "Ready for Review": 30,
-        "In Review": 40,
-        "Review Sharepoint Folder": 45,
-        "Reviewed": 50,
-        "Filed with IRS": 60,
-        "Accepted by IRS": 70,
-        "Extension Filed": 80,
-        "Extension Accepted": 90,
-        "Complete": 100
+        "Awaiting Client Documents": 5,
+        "Preparation In Progress": 10,
+        "Review In Progress": 15,
+        "Extension Filed with IRS": 20,
+        "Extension Accepted with IRS": 25,
+        "Tax Return Filed with IRS": 30,
+        "Tax Return Accepted with IRS": 40,
+        "Tax Return Complete": 45,
       };
 
       function statusScore(status) {
