@@ -69,13 +69,6 @@
         text-align: center;
         color: #6b7280;
       }
-      th.sortable {
-        cursor: pointer;
-        user-select: none;
-      }
-      th.sortable:hover {
-        background: #e2e8f0;
-      }
     </style>
   </head>
   <body>
@@ -91,15 +84,11 @@
           <table>
             <thead>
               <tr>
-                <th class="sortable" data-key="clientName">Client</th>
-                <th class="sortable" data-key="taxYear">Tax Year</th>
-                <th class="sortable" data-key="taxReturnType">
-                  Tax Return Type
-                </th>
-                <th class="sortable" data-key="status">Status</th>
-                <th class="sortable" data-key="lastUpdatedIso">
-                  Last Updated
-                </th>
+                <th>Client</th>
+                <th>Tax Year</th>
+                <th>Tax Return Type</th>
+                <th>Status</th>
+                <th>Last Updated</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -109,9 +98,9 @@
     </main>
 
     <script>
-      // -----------------------------
-      // Read tickets from URL param
-      // -----------------------------
+      // ---------------------------
+      // Read ?tickets=... from URL
+      // ---------------------------
       function getRawFromQuery() {
         const params = new URLSearchParams(window.location.search);
         const encoded = params.get("tickets");
@@ -123,59 +112,72 @@
         }
       }
 
-      // -----------------------------
-      // Status mapping (your values)
-      // -----------------------------
+      // ---------------------------
+      // Map internal status → client-friendly
+      // ---------------------------
       function mapClientStatus(raw) {
         if (!raw) return "";
 
         const table = {
-          "Waiting on client": "Awaiting Client Documents",
-          Doing: "Preparation In Progress",
-          "Done - Ready for Reviewer": "Review In Progress",
-          "Done - Ready for delivery": "Review Completed",
-          "Extension: E-Filed / Filed": "Extension Filed with IRS",
-          "Extension: Filing Accepted": "Extension Accepted with IRS",
-          "Return: E-Filed / Filed": "Tax Return Filed with IRS",
-          "Return: Filing Accepted": "Tax Return Accepted with IRS",
-          Closed: "Tax Return Complete",
+          "In Progress": "In Progress",
+          "Preparation in Progress": "In Progress",
+          "Preparation Completed": "Ready for Review",
+          "Review in Progress": "In Review",
+          "Review Completed": "Reviewed",
+          "Awaiting Client Documents": "Waiting on You",
+          "Tax Return Filed with IRS": "Filed with IRS",
+          "Tax Return Accepted": "Accepted by IRS",
+          "Extension Filed with IRS": "Extension Filed",
+          "Extension Accepted": "Extension Accepted",
+          "Tax Return Complete": "Complete",
+          "Review SharePoint Folder": "Review SP",
+          "Documents Received": "Documents Received",
         };
 
         return table[raw] || raw;
       }
 
-      // Optional “never go backwards” ranking (kept here if you want it later)
-      const STATUS_ORDER = {
-        "Awaiting Client Documents": 5,
-        "Preparation In Progress": 10,
-        "Review In Progress": 15,
-        "Extension Filed with IRS": 20,
-        "Extension Accepted with IRS": 25,
-        "Tax Return Filed with IRS": 30,
-        "Tax Return Accepted with IRS": 40,
-        "Tax Return Complete": 45,
-      };
+      // ---------------------------
+      // Normalize tax year
+      //  - "2024"  → "2024"
+      //  - "TY20" → "2020"
+      //  - "TY21" → "2021"
+      // ---------------------------
+      function normalizeTaxYear(value) {
+        if (!value) return "";
 
-      function statusScore(status) {
-        return STATUS_ORDER[status] ?? 0;
+        // already a plain 4-digit year
+        if (/^\d{4}$/.test(value)) {
+          return value;
+        }
+
+        // match "TY20", "ty21", etc
+        const match = /^TY(\d{2})$/i.exec(value.trim());
+        if (match) {
+          const yy = Number(match[1]);
+          // 00–49 → 2000+, 50–99 → 1900+
+          const fullYear = yy < 50 ? 2000 + yy : 1900 + yy;
+          return String(fullYear);
+        }
+
+        // anything else, just return as-is
+        return value;
       }
 
-      // -----------------------------
-      // Date formatting
-      // -----------------------------
+      // ---------------------------
+      // Format timestamp (ms) → "December 2nd, 2025"
+      // ---------------------------
       function formatDate(iso) {
         if (!iso) return "";
 
-        // your workflow sends ms timestamps; treat as number when possible
-        const num = Number(iso);
-        const d = isNaN(num) ? new Date(iso) : new Date(num);
+        const d = new Date(Number(iso));
         if (isNaN(d.getTime())) return iso;
 
         const day = d.getDate();
         const suffix =
           day >= 11 && day <= 13
             ? "th"
-            : ["st", "nd", "rd"][day % 10 - 1] || "th";
+            : ["st", "nd", "rd"][(day % 10) - 1] || "th";
 
         const month = d.toLocaleString("en-US", { month: "long" });
         const year = d.getFullYear();
@@ -183,9 +185,9 @@
         return `${month} ${day}${suffix}, ${year}`;
       }
 
-      // -----------------------------
-      // Parse rows from JSON
-      // -----------------------------
+      // ---------------------------
+      // Parse JSON rows from Assembly / Retool
+      // ---------------------------
       function parseRows(rawString) {
         if (!rawString) return [];
         let rows;
@@ -197,91 +199,35 @@
           return [];
         }
 
-        return rows.map(function (r) {
-          return {
-            clientName: r.client_name || "",
-            taxYear: String(r.tax_year || ""),
-            taxReturnType: r.tax_return_type || r.type || "",
-            status: mapClientStatus(r.status_label || r.status || ""),
-            lastUpdatedIso: r.updated_iso || r.last_updated || "",
-          };
-        });
+        return rows
+          .map(function (r) {
+            const rawYear = String(r.tax_year || "");
+            return {
+              clientName: r.client_name || "",
+              taxYear: normalizeTaxYear(rawYear),
+              taxReturnType: r.tax_return_type || r.type || "",
+              status: mapClientStatus(r.status_label || r.status || ""),
+              lastUpdatedIso: r.updated_iso || r.last_updated || "",
+            };
+          })
+          .sort(function (a, b) {
+            // Default sort: newest tax year first
+            return Number(b.taxYear) - Number(a.taxYear);
+          });
       }
 
-      // -----------------------------
+      // ---------------------------
       // Error display
-      // -----------------------------
+      // ---------------------------
       function showError(message) {
         var el = document.getElementById("error");
         el.textContent = message;
         el.style.display = "block";
       }
 
-      // -----------------------------
-      // Sorting
-      // -----------------------------
-      let currentRows = [];
-      let sortState = { key: null, direction: "asc" };
-
-      function sortRows(rows, key, direction) {
-        const dir = direction === "desc" ? -1 : 1;
-
-        return rows.slice().sort(function (a, b) {
-          let va = a[key];
-          let vb = b[key];
-
-          if (key === "taxYear") {
-            va = Number(va) || 0;
-            vb = Number(vb) || 0;
-          } else if (key === "lastUpdatedIso") {
-            const na = Number(va);
-            const nb = Number(vb);
-            const da = isNaN(na) ? new Date(va).getTime() : na;
-            const db = isNaN(nb) ? new Date(vb).getTime() : nb;
-            va = da || 0;
-            vb = db || 0;
-          } else {
-            va = (va || "").toString().toLowerCase();
-            vb = (vb || "").toString().toLowerCase();
-          }
-
-          if (va < vb) return -1 * dir;
-          if (va > vb) return 1 * dir;
-          return 0;
-        });
-      }
-
-      function attachSortHandlers() {
-        const nodeList = document.querySelectorAll("th.sortable");
-        const headers = Array.prototype.slice.call(nodeList);
-
-        headers.forEach(function (th) {
-          th.addEventListener("click", function () {
-            const key = th.getAttribute("data-key");
-            if (!key) return;
-
-            // toggle / set direction
-            if (sortState.key === key) {
-              sortState.direction =
-                sortState.direction === "asc" ? "desc" : "asc";
-            } else {
-              sortState.key = key;
-              sortState.direction = key === "lastUpdatedIso" ? "desc" : "asc";
-            }
-
-            const sorted = sortRows(
-              currentRows,
-              sortState.key,
-              sortState.direction
-            );
-            renderTable(sorted);
-          });
-        });
-      }
-
-      // -----------------------------
-      // Render table
-      // -----------------------------
+      // ---------------------------
+      // Render table rows
+      // ---------------------------
       function renderTable(rows) {
         var tbody = document.getElementById("rows");
         tbody.innerHTML = "";
@@ -325,17 +271,14 @@
         });
       }
 
-      // -----------------------------
+      // ---------------------------
       // Init
-      // -----------------------------
+      // ---------------------------
       (function init() {
         try {
-          const raw = getRawFromQuery();
-          currentRows = parseRows(raw);
-          attachSortHandlers();
-          // default initial sort: newest year first
-          currentRows = sortRows(currentRows, "taxYear", "desc");
-          renderTable(currentRows);
+          var raw = getRawFromQuery();
+          var rows = parseRows(raw);
+          renderTable(rows);
         } catch (e) {
           console.error(e);
           showError("Failed to load tax return status data.");
