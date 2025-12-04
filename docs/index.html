@@ -89,9 +89,13 @@
               <tr>
                 <th class="sortable" data-sort="clientName">Client</th>
                 <th class="sortable" data-sort="taxYear">Tax Year</th>
-                <th class="sortable" data-sort="taxReturnType">Tax Return Type</th>
+                <th class="sortable" data-sort="taxReturnType">
+                  Tax Return Type
+                </th>
                 <th class="sortable" data-sort="status">Status</th>
-                <th class="sortable" data-sort="lastUpdatedIso">Last Updated</th>
+                <th class="sortable" data-sort="lastUpdatedIso">
+                  Last Updated
+                </th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -124,7 +128,7 @@
         const table = {
           // Main statuses
           "Waiting on client": "Awaiting Client Documents",
-          "Doing": "Preparation In Progress",
+          Doing: "Preparation In Progress",
           "Done - Ready for Reviewer": "Preparation completed",
           "Done - Ready for delivery": "Review in progress",
           "Extension: E-Filed / Filed": "Extension filed with IRS",
@@ -132,7 +136,7 @@
           "Return: E-Filed / Filed": "Tax return filed with IRS",
           "Return: Filing Accepted": "Tax return accepted by IRS",
           "Waiting for Pickup": "Tax return ready for pickup",
-          "Closed": "Tax Return Complete",
+          Closed: "Tax Return Complete"
         };
 
         return table[raw] || raw;
@@ -140,7 +144,6 @@
 
       // ---------------------------
       // Status ranking: higher = further along
-      // This is the core ordering.
       // ---------------------------
       const STATUS_ORDER = {
         "Awaiting Client Documents": 5,
@@ -152,24 +155,31 @@
         "Tax return filed with IRS": 40,
         "Tax return accepted by IRS": 45,
         "Tax return ready for pickup": 50,
-        "Tax Return Complete" 55,
+        "Tax Return Complete": 55
       };
 
-      // Statuses that UNLOCK going backwards after they’re reached
+      // Statuses that temporarily UNLOCK going backwards
+      // (window is only while the *current* status is one of these)
       const STATUS_UNLOCK_REGRESSION = new Set([
-        "Tax Return Complete",
-        "Tax Return Accepted with IRS"
+        "Extension filed with IRS",
+        "Extension accepted by IRS"
       ]);
 
       function statusScore(status) {
         return STATUS_ORDER[status] ?? 0;
       }
 
-      // Enforce "never go backwards" UNTIL we hit an unlock status
-      function enforceNonDecreasingStatus(rows) {
+      // ---------------------------------------------------
+      // Enforce:
+      //  - normally: status cannot go backwards (score never decreases)
+      //  - while current status is EXTENSION FILED / ACCEPTED:
+      //      allow any movement (for the next rows)
+      //  - once status moves to something else, lock again
+      // ---------------------------------------------------
+      function enforceStatusWithExtensionWindow(rows) {
         const stateByKey = {};
 
-        // Work oldest → newest
+        // Oldest → newest
         const sorted = rows
           .slice()
           .sort(
@@ -180,39 +190,49 @@
 
         sorted.forEach((row) => {
           const key =
-            row.clientName +
-            "|" +
-            row.taxYear +
-            "|" +
-            row.taxReturnType;
+            row.clientName + "|" + row.taxYear + "|" + row.taxReturnType;
 
           let state = stateByKey[key];
           if (!state) {
             state = {
-              bestScore: 0,
-              bestLabel: null,
-              unlocked: false
+              lastScore: 0,
+              lastLabel: null,
+              allowRegression: false
             };
           }
 
-          const score = statusScore(row.status);
+          let status = row.status;
+          let score = statusScore(status);
+          const isExtension = STATUS_UNLOCK_REGRESSION.has(status);
 
-          if (!state.unlocked) {
-            // still in "no regression" mode
-            if (score >= state.bestScore) {
-              state.bestScore = score;
-              state.bestLabel = row.status;
+          if (!state.allowRegression) {
+            // "normal" mode: no going backwards
+            if (score < state.lastScore) {
+              // clamp to last label
+              if (state.lastLabel) {
+                row.status = state.lastLabel;
+                status = state.lastLabel;
+                score = statusScore(status);
+              }
             } else {
-              // clamp backwards status to best seen so far
-              row.status = state.bestLabel || row.status;
+              // moved forward or stayed same
+              state.lastLabel = status;
+              state.lastScore = score;
             }
 
-            // AFTER applying, see if this status unlocks regression
+            // entering extension window?
             if (STATUS_UNLOCK_REGRESSION.has(row.status)) {
-              state.unlocked = true;
+              state.allowRegression = true;
             }
           } else {
-            // unlocked: do nothing, allow any status
+            // extension window: allow movement in any direction
+            state.lastLabel = status;
+            state.lastScore = score;
+
+            // if we leave extension statuses, close the window
+            if (!STATUS_UNLOCK_REGRESSION.has(status)) {
+              state.allowRegression = false;
+            }
           }
 
           stateByKey[key] = state;
@@ -223,9 +243,6 @@
 
       // ---------------------------
       // Normalize tax year
-      //  - "2024"  → "2024"
-      //  - "TY20" → "2020"
-      //  - "TY21" → "2021"
       // ---------------------------
       function normalizeTaxYear(value) {
         if (!value) return "";
@@ -326,8 +343,8 @@
           };
         });
 
-        // Enforce "no backwards" until an unlock status
-        enforceNonDecreasingStatus(mapped);
+        // Apply extension-window logic
+        enforceStatusWithExtensionWindow(mapped);
 
         return mapped;
       }
@@ -406,7 +423,8 @@
               var key = th.getAttribute("data-sort");
 
               if (currentSort.key === key) {
-                currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
+                currentSort.dir =
+                  currentSort.dir === "asc" ? "desc" : "asc";
               } else {
                 currentSort.key = key;
                 if (key === "taxYear" || key === "lastUpdatedIso") {
