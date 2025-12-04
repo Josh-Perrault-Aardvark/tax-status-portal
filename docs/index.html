@@ -123,38 +123,42 @@
 // Map raw internal statuses → client-facing labels
 // ---------------------------
 function mapClientStatus(raw) {
-  if (!raw) return "Not Started";
+  const key = (raw || "").trim();
 
-  const key = String(raw).trim();
+  // If there's truly nothing, treat as Not Started
+  if (!key) return "Not Started";
 
+  // This is the ONLY set of statuses a client is allowed to see.
+  // Left side = what comes from Retool/Abbalog
+  // Right side = what you want to show.
   const table = {
-    // HubSpot / Abbalog internal labels → what clients see
+    // Intake / waiting
     "Waiting on client": "Awaiting Client Documents",
-    "Doing": "Preparation In Progress",
-    "Done - Ready for Reviewer": "Preparation completed",
-    "Done - Ready for delivery": "Review in progress",
-    "Extension: E-Filed / Filed": "Extension filed with IRS",
-    "Extension: Filing Accepted": "Extension accepted by IRS",
-    "Return: E-Filed / Filed": "Tax return filed with IRS",
-    "Return: Filing Accepted": "Tax return accepted by IRS",
-    "Waiting for Pickup": "Tax return ready for pickup",
-    "Closed": "Tax Return Complete",
+    "Waiting on You": "Awaiting Client Documents",
 
-    // Things you explicitly want to show as “Not Started”
-    "To do": "Not Started",
-    "To Do": "Not Started",
-    "To-do": "Not Started",
+    // Prep
+    "Doing": "Preparation In Progress",
+    "Preparation In Progress": "Preparation In Progress",
+
+    // Review
+    "Review in Progress": "Review In Progress",
+    "In Review": "Review In Progress",
+
+    // Extension / filing / accepted
+    "Extension filed with IRS": "Extension filed with IRS",
+    "Extension accepted by IRS": "Extension accepted by IRS",
+    "Tax return filed with IRS": "Tax return filed with IRS",
+    "Tax return accepted by IRS": "Tax return accepted by IRS",
+
+    // Ready for pickup / complete
+    "Tax return ready for pickup": "Tax return ready for pickup",
+    "Tax Return Complete": "Tax Return Complete",
   };
 
-  const mapped = table[key];
-  if (mapped) {
-    return mapped;
-  }
-
-  // Anything not in our table counts as "Not Started"
-  return "Not Started";
+  // If it's in the whitelist, show the mapped label.
+  // If it's NOT in the whitelist, show Not Started.
+  return table[key] || "Not Started";
 }
-
       // ---------------------------
       // Status ranking: higher = further along
       // ---------------------------
