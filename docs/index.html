@@ -119,66 +119,86 @@
         }
       }
 
-// ---------------------------
-// Map raw internal statuses → client-facing labels
-// ---------------------------
-function mapClientStatus(raw) {
-  const key = (raw || "").trim();
+      // ---------------------------
+      // Map raw internal statuses → client-facing labels
+      // ---------------------------
+      function mapClientStatus(raw) {
+        const key = (raw || "").trim();
 
-  // If there's truly nothing, treat as Not Started
-  if (!key) return "Not Started";
+        // If there's truly nothing, treat as Not Started
+        if (!key) return "Not Started";
 
-  // This is the ONLY set of statuses a client is allowed to see.
-  // Left side = what comes from Retool/Abbalog
-  // Right side = what you want to show.
-  const table = {
-    // Intake / waiting
-    "Waiting on client": "Awaiting Client Documents",
-    "Waiting on You": "Awaiting Client Documents",
+        // If we already have a nice client-facing label from Retool,
+        // just pass it through. These are the labels stageMap() sets.
+        const passthrough = new Set([
+          "Awaiting Client Documents",
+          "Information Being Processed",
+          "Information Not Started",
+          "Preparation In Progress",
+          "Preparation Not Started",
+          "In Review",
+          "Queued for Review",
+          "Extension filed with IRS",
+          "Extension accepted by IRS",
+          "Tax return filed with IRS",
+          "Tax return accepted by IRS",
+          "Tax return ready for pickup",
+          "Tax Return Complete"
+        ]);
 
-    // Prep
-    "Doing": "Preparation In Progress",
-    "Preparation In Progress": "Preparation In Progress",
+        if (passthrough.has(key)) {
+          return key;
+        }
 
-    // Review
-    "Review in Progress": "Review In Progress",
-    "In Review": "Review In Progress",
+        // Legacy/raw values that need to be normalized
+        const table = {
+          // Intake / waiting
+          "Waiting on client": "Awaiting Client Documents",
+          "Waiting on You": "Awaiting Client Documents",
 
-    // Extension / filing / accepted
-    "Extension filed with IRS": "Extension filed with IRS",
-    "Extension accepted by IRS": "Extension accepted by IRS",
-    "Tax return filed with IRS": "Tax return filed with IRS",
-    "Tax return accepted by IRS": "Tax return accepted by IRS",
+          // Prep
+          "Doing": "Preparation In Progress",
+          "Preparation In Progress": "Preparation In Progress",
 
-    // Ready for pickup / complete
-    "Tax return ready for pickup": "Tax return ready for pickup",
-    "Tax Return Complete": "Tax Return Complete",
-  };
+          // Review
+          "Review in Progress": "Review In Progress",
+          "In Review": "Review In Progress",
 
-  // If it's in the whitelist, show the mapped label.
-  // If it's NOT in the whitelist, show Not Started.
-  return table[key] || "Not Started";
-}
+          // Extension / filing / accepted
+          "Extension filed with IRS": "Extension filed with IRS",
+          "Extension accepted by IRS": "Extension accepted by IRS",
+          "Tax return filed with IRS": "Tax return filed with IRS",
+          "Tax return accepted by IRS": "Tax return accepted by IRS",
+
+          // Ready for pickup / complete
+          "Tax return ready for pickup": "Tax return ready for pickup",
+          "Tax Return Complete": "Tax Return Complete"
+        };
+
+        // If it's in the map, show the mapped label.
+        // If it's NOT in the map and not one of the known labels,
+        // treat as Not Started.
+        return table[key] || "Not Started";
+      }
+
       // ---------------------------
       // Status ranking: higher = further along
       // ---------------------------
-// Status ranking: higher number = further along.
-const STATUS_ORDER = {
-  "Not Started": 0,
-  "Awaiting Client Documents": 5,
-  "Preparation In Progress": 10,
-  "Preparation completed": 15,
-  "Review in progress": 20,
-  "Extension filed with IRS": 25,
-  "Extension accepted by IRS": 30,
-  "Tax return filed with IRS": 40,
-  "Tax return accepted by IRS": 45,
-  "Tax return ready for pickup": 50,
-  "Tax Return Complete": 55,
-};
+      const STATUS_ORDER = {
+        "Not Started": 0,
+        "Awaiting Client Documents": 5,
+        "Preparation In Progress": 10,
+        "Preparation completed": 15,
+        "Review In Progress": 20,
+        "Extension filed with IRS": 25,
+        "Extension accepted by IRS": 30,
+        "Tax return filed with IRS": 40,
+        "Tax return accepted by IRS": 45,
+        "Tax return ready for pickup": 50,
+        "Tax Return Complete": 55
+      };
 
       // Statuses that temporarily UNLOCK going backwards
-      // (window is only while the *current* status is one of these)
       const STATUS_UNLOCK_REGRESSION = new Set([
         "Extension filed with IRS",
         "Extension accepted by IRS"
@@ -278,13 +298,21 @@ const STATUS_ORDER = {
       }
 
       // ---------------------------
-      // Format timestamp (ms) → "December 2nd, 2025"
+      // Format timestamp → "December 2nd, 2025"
+      // Works with either ms or ISO string
       // ---------------------------
-      function formatDate(iso) {
-        if (!iso) return "";
+      function formatDate(value) {
+        if (!value) return "";
 
-        const d = new Date(Number(iso));
-        if (isNaN(d.getTime())) return iso;
+        let d;
+        const n = Number(value);
+        if (!Number.isNaN(n) && n > 0) {
+          d = new Date(n); // ms
+        } else {
+          d = new Date(value); // ISO
+        }
+
+        if (isNaN(d.getTime())) return "";
 
         const day = d.getDate();
         const suffix =
@@ -351,18 +379,18 @@ const STATUS_ORDER = {
           return [];
         }
 
-var mapped = rows.map(function (r) {
-  var rawYear = String(r.tax_year || "");
-  var rawStatus = r.status_label || r.status || "";
+        var mapped = rows.map(function (r) {
+          var rawYear = String(r.tax_year || "");
+          var rawStatus = r.status_label || r.status || "";
 
-  return {
-    clientName: r.client_name || "",
-    taxYear: normalizeTaxYear(rawYear),
-    taxReturnType: r.tax_return_type || r.type || "",
-    status: mapClientStatus(rawStatus),
-    lastUpdatedIso: r.updated_iso || r.last_updated || ""
-  };
-});
+          return {
+            clientName: r.client_name || "",
+            taxYear: normalizeTaxYear(rawYear),
+            taxReturnType: r.tax_return_type || r.type || "",
+            status: mapClientStatus(rawStatus),
+            lastUpdatedIso: r.updated_iso || r.last_updated || ""
+          };
+        });
 
         // Apply extension-window logic
         enforceStatusWithExtensionWindow(mapped);
