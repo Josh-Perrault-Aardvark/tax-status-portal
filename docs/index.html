@@ -120,67 +120,40 @@
       }
 
       // ---------------------------
-      // Map raw internal statuses → client-facing labels
-      // ---------------------------
-      function mapClientStatus(raw) {
-        const key = (raw || "").trim();
+// Map raw internal statuses → client-facing labels
+// ---------------------------
+function mapClientStatus(raw) {
+  const key = (raw || "").trim();
+  if (!key) return "Not Started";
 
-        // If there's truly nothing, treat as Not Started
-        if (!key) return "Not Started";
+  // Canonical mapping from Abbalog/raw → client-friendly label
+  const table = {
+    "Waiting on client": "Awaiting Client Documents",
+    "Doing": "Preparation In Progress",
+    "Done - Ready for Reviewer": "Preparation completed",
+    "Done - Ready for delivery": "Review in progress",
 
-        // If we already have a nice client-facing label from Retool,
-        // just pass it through. These are the labels stageMap() sets.
-        const passthrough = new Set([
-          "Awaiting Client Documents",
-          "Information Being Processed",
-          "Information Not Started",
-          "Preparation In Progress",
-          "Preparation Not Started",
-          "In Review",
-          "Queued for Review",
-          "Extension filed with IRS",
-          "Extension accepted by IRS",
-          "Tax return filed with IRS",
-          "Tax return accepted by IRS",
-          "Tax return ready for pickup",
-          "Tax Return Complete"
-        ]);
+    "Extension: E-Filed / Filed": "Extension filed with IRS",
+    "Extended - Accepted": "Extension accepted by IRS",
 
-        if (passthrough.has(key)) {
-          return key;
-        }
+    "Return: E-Filed / Filed": "Tax return filed with IRS",
+    "Return: Filing Accepted": "Tax return accepted by IRS",
 
-        // Legacy/raw values that need to be normalized
-        const table = {
-          // Intake / waiting
-          "Waiting on client": "Awaiting Client Documents",
-          "Waiting on You": "Awaiting Client Documents",
+    "Waiting for Pickup": "Tax return ready for pickup",
+    "Closed": "Tax Return Complete",
+  };
 
-          // Prep
-          "Doing": "Preparation In Progress",
-          "Preparation In Progress": "Preparation In Progress",
+  // The set of valid, client-facing labels (the right-hand side)
+  const allowed = new Set(Object.values(table).concat(["Not Started"]));
 
-          // Review
-          "Review in Progress": "Review In Progress",
-          "In Review": "Review In Progress",
+  // If we already have a client-facing label, pass it through.
+  if (allowed.has(key)) {
+    return key;
+  }
 
-          // Extension / filing / accepted
-          "Extension filed with IRS": "Extension filed with IRS",
-          "Extension accepted by IRS": "Extension accepted by IRS",
-          "Extended - Accepted": "Extension accepted by IRS",
-          "Tax return filed with IRS": "Tax return filed with IRS",
-          "Tax return accepted by IRS": "Tax return accepted by IRS",
-
-          // Ready for pickup / complete
-          "Tax return ready for pickup": "Tax return ready for pickup",
-          "Tax Return Complete": "Tax Return Complete"
-        };
-
-        // If it's in the map, show the mapped label.
-        // If it's NOT in the map and not one of the known labels,
-        // treat as Not Started.
-        return table[key] || "Not Started";
-      }
+  // Otherwise, map from the raw value.
+  return table[key] || "Not Started";
+}
 
       // ---------------------------
       // Status ranking: higher = further along
