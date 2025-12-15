@@ -92,9 +92,9 @@
                 <th class="sortable" data-sort="taxReturnType">
                   Tax Return Type
                 </th>
-                <th class="sortable" data-sort="status">Status</th>
+                <th class="sortable" data-sort="status">Tax Return Status</th>
                 <th class="sortable" data-sort="returnOnExtension">
-                  Return on Extension?
+                  Extension Status
                 </th>
                 <th class="sortable" data-sort="lastUpdatedIso">
                   Last Updated
@@ -225,8 +225,7 @@
           var rawYear = String(r.tax_year || "");
           var status = r.status_label || r.status || "Not started";
 
-          // ✅ Abbalog extension property (adjust key if needed)
-          // Expecting r.extension_status like "Extension accepted"
+          // Abbalog extension property
           var extRaw = (r.extension_status ?? "").toString().trim();
           var returnOnExtension = extRaw === "Extension accepted" ? "Yes" : "";
 
@@ -262,7 +261,7 @@
         if (!rows.length) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
-          td.colSpan = 6; // ✅ updated for new column
+          td.colSpan = 6;
           td.className = "empty";
           td.textContent = "No tax return status data available.";
           tr.appendChild(td);
@@ -290,7 +289,6 @@
           tdStatus.textContent = row.status;
           tr.appendChild(tdStatus);
 
-          // ✅ New column: Return on Extension?
           var tdExt = document.createElement("td");
           tdExt.textContent = row.returnOnExtension;
           tr.appendChild(tdExt);
@@ -311,11 +309,9 @@
           var raw = getRawFromQuery();
           currentRows = parseRows(raw);
 
-          // initial sort (taxYear desc)
           currentSort = { key: "taxYear", dir: "desc" };
           applySortAndRender();
 
-          // Wire up header clicks
           var headers = document.querySelectorAll("th.sortable[data-sort]");
           headers.forEach(function (th) {
             th.addEventListener("click", function () {
