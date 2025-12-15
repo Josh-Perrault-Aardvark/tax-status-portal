@@ -93,6 +93,9 @@
                   Tax Return Type
                 </th>
                 <th class="sortable" data-sort="status">Status</th>
+                <th class="sortable" data-sort="returnOnExtension">
+                  Return on Extension?
+                </th>
                 <th class="sortable" data-sort="lastUpdatedIso">
                   Last Updated
                 </th>
@@ -218,20 +221,21 @@
           return [];
         }
 
-        // Retool already:
-        //  - filters per client
-        //  - normalizes status_label
-        //  - enforces no-backwards logic
-        // So here we just trust those fields.
         var mapped = rows.map(function (r) {
           var rawYear = String(r.tax_year || "");
           var status = r.status_label || r.status || "Not started";
+
+          // ✅ Abbalog extension property (adjust key if needed)
+          // Expecting r.extension_status like "Extension accepted"
+          var extRaw = (r.extension_status ?? "").toString().trim();
+          var returnOnExtension = extRaw === "Extension accepted" ? "Yes" : "";
 
           return {
             clientName: r.client_name || "",
             taxYear: normalizeTaxYear(rawYear),
             taxReturnType: r.tax_return_type || r.type || "",
             status: status,
+            returnOnExtension: returnOnExtension,
             lastUpdatedIso: r.updated_iso || r.last_updated || "",
           };
         });
@@ -258,7 +262,7 @@
         if (!rows.length) {
           var tr = document.createElement("tr");
           var td = document.createElement("td");
-          td.colSpan = 5;
+          td.colSpan = 6; // ✅ updated for new column
           td.className = "empty";
           td.textContent = "No tax return status data available.";
           tr.appendChild(td);
@@ -285,6 +289,11 @@
           var tdStatus = document.createElement("td");
           tdStatus.textContent = row.status;
           tr.appendChild(tdStatus);
+
+          // ✅ New column: Return on Extension?
+          var tdExt = document.createElement("td");
+          tdExt.textContent = row.returnOnExtension;
+          tr.appendChild(tdExt);
 
           var tdUpdated = document.createElement("td");
           tdUpdated.textContent = formatDate(row.lastUpdatedIso);
